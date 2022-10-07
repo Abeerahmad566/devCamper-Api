@@ -1,6 +1,10 @@
 const express = require('express');
+const path = require('path');
 const dotenv = require('dotenv');
+const fileupload = require('express-fileupload');
+const cookieParser = require('cookie-parser');
 const bootcamps = require('./Routes/bootcamp');
+const auth = require('./Routes/auth');
 const courses = require('./Routes/course');
 const morgan = require('morgan');
 const connectDb = require('./config/db');
@@ -21,9 +25,19 @@ if (process.env.NODE_ENV === 'development') {
 //connect db
 connectDb();
 
-//bootcamp
+//file upload
+app.use(fileupload());
+
+//cookie parser
+app.use(cookieParser());
+
+//set static folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+//Mount Routers
 app.use('/api/v1/bootcamps', bootcamps);
 app.use('/api/v1/courses', courses);
+app.use('/api/v1/auth', auth);
 
 // as it executes linearly so must be place after the handler
 app.use(errorHandler);

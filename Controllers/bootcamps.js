@@ -7,74 +7,7 @@ const geocoder = require('../utils/GeoCoder');
 //@route    GET /api/v1/bootcamps
 //@access   public
 exports.getBootcamps = asyncHandler(async (req, res, next) => {
-  let query;
-  // making copy of req.query
-  const reqQuery = { ...req.query };
-
-  //fields to remove
-  const removeFields = ['select', 'sort', 'page', 'limit'];
-
-  //loop over remove fields and remove them from query
-  removeFields.forEach((param) => delete reqQuery[param]);
-
-  // converting query into string
-  let queryStr = JSON.stringify(reqQuery);
-  // adding dollar sign infront of match
-  queryStr = queryStr.replace(/\b(gt|gte|lt|lte)\b/g, (match) => `$${match}`);
-
-  //Finding Resources
-  query = Bootcamp.find(JSON.parse(queryStr)).populate('courses');
-
-  //select Fields
-  if (req.query.select) {
-    //.split seperate them where is , and the join is make string with " "
-    const fields = req.query.select.split(',').join(' ');
-    //parse use to convert back into object
-    query = query.select(fields);
-  }
-
-  //sort fields
-  if (req.query.sort) {
-    const sortby = req.query.split(',').join(' ');
-    query = query.select(sortby);
-  } else {
-    query = query.sort('-createdAt');
-  }
-
-  //pagination
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 25;
-  const startIndex = (page - 1) * limit;
-  const endIndex = page * limit;
-  const total = await Bootcamp.countDocuments();
-
-  query = query.skip(startIndex).limit(limit);
-
-  const bootcamps = await query;
-
-  //pagination
-  const pagination = {};
-  let cuurentPage;
-  if (endIndex < total) {
-    pagination.next = {
-      page: page + 1,
-      limit: limit,
-    };
-  }
-  if (startIndex > 0) {
-    pagination.prev = {
-      page: page - 1,
-      limit: limit,
-    };
-  }
-
-  res.status(200).json({
-    sucess: true,
-    pagination,
-    pageNumber: page,
-    count: bootcamps.length,
-    data: bootcamps,
-  });
+  res.status(200).json(res.advancedResults);
 });
 
 //@desc     Get single BootCamps
@@ -94,22 +27,50 @@ exports.getSingleBootcamp = asyncHandler(async (req, res, next) => {
 //@route    POST /api/v1/bootcamps
 //@access   private
 exports.postBootcamp = asyncHandler(async (req, res, next) => {
-  const bootcamp = await BootCamp.create(req.body);
+  //Adding User to body
+  req.body.user = req.user.id;
+
+  //Checked for published bootcamps
+  const publishedBootcamps = await Bootcamp.findOne({ user: req.user.id });
+
+  //if the user role is not admin, they can add only one bootcamp
+  if (publishedBootcamps && req.user.role !== 'admin') {
+    return next(
+      new errorResponse(
+        `The user ${req.user.name} has already published a bootcamp`,
+        400
+      )
+    );
+  }
+  const bootcamp = await Bootcamp.create(req.body);
   res.status(201).json({ sucess: true, data: bootcamp });
 });
 //@desc     Put BootCamps
 //@route    PUT /api/v1/bootcamps/:id
 //@access   private
 exports.putBootcamp = asyncHandler(async (req, res, next) => {
-  const bootcamp = await Bootcamp.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
-  });
+  let bootcamp = await Bootcamp.findById(req.params.id);
+
   if (!bootcamp) {
     return next(
       new errorResponse(`BootCamp not Found with id of ${req.params.id}`, 404)
     );
   }
+  //make sure user is bootcamp owner
+  if (bootcamp.user.toString() !== req.user.id && req.user.role !== 'admin') {
+    return next(
+      new errorResponse(
+        `User ${req.user.name} is not Authorize to update the bootcamp`,
+        404
+      )
+    );
+  }
+
+  bootcamp = await Bootcamp.findOneAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
   res.status(201).json({ sucess: true, data: bootcamp });
 });
 
@@ -121,6 +82,15 @@ exports.deleteBootcamp = asyncHandler(async (req, res, next) => {
   if (!bootcamp) {
     return next(
       new errorResponse(`BootCamp not Found with id of ${req.params.id}`, 404)
+    );
+  }
+  //make sure user is bootcamp owner
+  if (bootcamp.user.toString() !== req.user.id && req.user.role !== 'admin') {
+    return next(
+      new errorResponse(
+        `User ${req.user.name} is not the Authorize to delete the bootcamp`,
+        404
+      )
     );
   }
   bootcamp.remove();
@@ -159,5 +129,63 @@ exports.getBootcampsinRadius = asyncHandler(async (req, res, next) => {
     success: true,
     count: bootcamps.length,
     data: bootcamps,
+  });
+});
+//@desc     Upload Photo for BootCamps
+//@route    PUT /api/v1/bootcamps/:id/photo
+//@access   private
+exports.BootcampPhotoUpload = asyncHandler(async (req, res, next) => {
+  const bootcamp = await Bootcamp.findById(req.params.id);
+  if (!bootcamp) {
+    return next(
+      new errorResponse(`BootCamp not Found with id of ${req.params.id}`, 404)
+    );
+  }
+  //make sure user is bootcamp owner
+  if (bootcamp.user.toString() !== req.user.id && req.user.role !== 'admin') {
+    return next(
+      new errorResponse(
+        `User ${req.user.name} is not Authorize to update the bootcamp`,
+        404
+      )
+    );
+  }
+  if (!req.files) {
+    return next(new errorResponse(`Please Upload File`, 400));
+  }
+
+  const file = req.files.file;
+
+  // Make sure file is photo
+  if (!file.mimetype.startsWith('image')) {
+    return next(new errorResponse(`Please Upload a Image File`, 400));
+  }
+
+  //check file size
+  if (file.size > process.env.MAX_FILE_UPLOAD) {
+    return next(
+      new errorResponse(
+        `Please Upload a Image File less than ${process.env.MAX_FILE_UPLOAD}`,
+        400
+      )
+    );
+  }
+  //create custome file name
+  //path.parse(filename).ext to get extension
+  file.name = `photo-${bootcamp._id}-${file.name}`;
+  //.mv built function to move files
+
+  file.mv(`${process.env.FILE_UPLOAD_PATH}/${file.name}`, async (err) => {
+    if (err) {
+      console.log(err);
+      return next(new errorResponse(`Problem with file Upload`, 500));
+    }
+
+    await Bootcamp.findByIdAndUpdate(req.param.id, { photo: file.name });
+
+    res.status(200).json({
+      success: true,
+      data: file.name,
+    });
   });
 });
