@@ -5,7 +5,9 @@ const fileupload = require('express-fileupload');
 const cookieParser = require('cookie-parser');
 const bootcamps = require('./Routes/bootcamp');
 const auth = require('./Routes/auth');
+const users = require('./Routes/users');
 const courses = require('./Routes/course');
+const reviews = require('./Routes/review');
 const morgan = require('morgan');
 const connectDb = require('./config/db');
 const colors = require('colors');
@@ -38,6 +40,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/v1/bootcamps', bootcamps);
 app.use('/api/v1/courses', courses);
 app.use('/api/v1/auth', auth);
+app.use('/api/v1/users', users);
+app.use('/api/v1/reviews', reviews);
 
 // as it executes linearly so must be place after the handler
 app.use(errorHandler);
