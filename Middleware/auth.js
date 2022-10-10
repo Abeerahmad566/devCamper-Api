@@ -15,14 +15,15 @@ exports.protect = asyncHandler(async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   }
 
-  // else if(req.cookies.token){
-  // token = req.cookies.token
+  // else if (req.cookies.token) {
+  //   token = req.cookies.token;
   // }
 
   //making sure token exist
   if (!token) {
     next(new errorResponse('Not authorize to access this route', 401));
   }
+
   try {
     //verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

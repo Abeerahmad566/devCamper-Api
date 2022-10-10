@@ -8,7 +8,7 @@ const errorHandler = (err, req, res, next) => {
 
   //Mongoose bad objectId format
   if (err.name === 'CastError') {
-    const message = `Resource not found with id of ${err.value}`;
+    const message = `Resource not found `;
     error = new errorResponse(message, 404);
   }
   //Mongoose duplicate object
